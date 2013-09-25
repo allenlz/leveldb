@@ -11,6 +11,7 @@ namespace leveldb {
 
 Options::Options()
     : comparator(BytewiseComparator()),
+      delete_policy(NULL),
       create_if_missing(false),
       error_if_exists(false),
       paranoid_checks(false),

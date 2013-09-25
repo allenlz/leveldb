@@ -18,8 +18,10 @@ static Slice GetLengthPrefixedSlice(const char* data) {
   return Slice(p, len);
 }
 
-MemTable::MemTable(const InternalKeyComparator& cmp)
+MemTable::MemTable(const InternalKeyComparator& cmp,
+    const DeletePolicy* delete_policy)
     : comparator_(cmp),
+      delete_policy_(delete_policy),
       refs_(0),
       table_(comparator_, &arena_) {
 }
@@ -105,7 +107,8 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   table_.Insert(buf);
 }
 
-bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
+bool MemTable::Get(const LookupKey& key, std::string* value, std::string* rkey, 
+                   Status* s) {
   Slice memkey = key.memtable_key();
   Table::Iterator iter(&table_);
   iter.Seek(memkey.data());
@@ -122,12 +125,18 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
     const char* entry = iter.key();
     uint32_t key_length;
     const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
-    if (comparator_.comparator.user_comparator()->Compare(
-            Slice(key_ptr, key_length - 8),
-            key.user_key()) == 0) {
+    Slice user_key(key_ptr, key_length - 8);
+    if (comparator_.comparator.user_comparator()->Compare(user_key,
+                                                          key.user_key()) == 0) {
       // Correct user key
       const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-      switch (static_cast<ValueType>(tag & 0xff)) {
+
+      ValueType type = static_cast<ValueType>(tag & 0xff);
+      if (DeletePolicyShouldDelete(delete_policy_, user_key, type)) {
+        type = kTypeDeletion;
+      }
+
+      switch (type) {
         case kTypeValue: {
           Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
           value->assign(v.data(), v.size());

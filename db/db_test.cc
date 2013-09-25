@@ -349,6 +349,7 @@ class DBTest {
         if (!ParseInternalKey(iter->key(), &ikey)) {
           result += "CORRUPTED";
         } else {
+          //TODO +DeletePolicyShouldDelete
           if (last_options_.comparator->Compare(ikey.user_key, user_key) != 0) {
             break;
           }
@@ -1443,6 +1444,8 @@ TEST(DBTest, CustomComparator) {
     Compact("[0]", "[1000000]");
   }
 }
+
+//TODO +DeletePolicyShouldDelete
 
 TEST(DBTest, ManualCompaction) {
   ASSERT_EQ(config::kMaxMemCompactLevel, 2)

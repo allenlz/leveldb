@@ -153,6 +153,8 @@ bool DumpTable(Env* env, const std::string& fname) {
              EscapeString(iter->key()).c_str(),
              EscapeString(iter->value()).c_str());
     } else {
+      // Please remember that it doesn't contains DeletePolicy here 
+      // You may need to write your own tools if you need one
       char kbuf[20];
       const char* type;
       if (key.type == kTypeDeletion) {

@@ -48,10 +48,13 @@ class DBIter: public Iterator {
     kReverse
   };
 
-  DBIter(DBImpl* db, const Comparator* cmp, Iterator* iter, SequenceNumber s,
+  DBIter(DBImpl* db, const Comparator* cmp, 
+         const DeletePolicy* delete_policy, 
+         Iterator* iter, SequenceNumber s,
          uint32_t seed)
       : db_(db),
         user_comparator_(cmp),
+        delete_policy_(delete_policy),
         iter_(iter),
         sequence_(s),
         direction_(kForward),
@@ -110,6 +113,7 @@ class DBIter: public Iterator {
 
   DBImpl* db_;
   const Comparator* const user_comparator_;
+  const DeletePolicy* const delete_policy_;
   Iterator* const iter_;
   SequenceNumber const sequence_;
 
@@ -139,6 +143,9 @@ inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
     status_ = Status::Corruption("corrupted internal key in DBIter");
     return false;
   } else {
+    if (DeletePolicyShouldDelete(delete_policy_, ikey)) {
+      ikey->type = kTypeDeletion;
+    }
     return true;
   }
 }
@@ -308,10 +315,12 @@ void DBIter::SeekToLast() {
 Iterator* NewDBIterator(
     DBImpl* db,
     const Comparator* user_key_comparator,
+    const DeletePolicy* delete_policy,
     Iterator* internal_iter,
     SequenceNumber sequence,
     uint32_t seed) {
-  return new DBIter(db, user_key_comparator, internal_iter, sequence, seed);
+  return new DBIter(db, user_key_comparator, delete_policy, 
+                    internal_iter, sequence, seed);
 }
 
 }  // namespace leveldb

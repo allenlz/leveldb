@@ -93,6 +93,7 @@ Options SanitizeOptions(const std::string& dbname,
                         const Options& src) {
   Options result = src;
   result.comparator = icmp;
+  result.delete_policy = src.delete_policy;
   result.filter_policy = (src.filter_policy != NULL) ? ipolicy : NULL;
   ClipToRange(&result.max_open_files,    64 + kNumNonTableCacheFiles, 50000);
   ClipToRange(&result.write_buffer_size, 64<<10,                      1<<30);
@@ -125,7 +126,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       db_lock_(NULL),
       shutting_down_(NULL),
       bg_cv_(&mutex_),
-      mem_(new MemTable(internal_comparator_)),
+      mem_(new MemTable(internal_comparator_, options_.delete_policy)),
       imm_(NULL),
       logfile_(NULL),
       logfile_number_(0),
@@ -411,7 +412,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
     WriteBatchInternal::SetContents(&batch, record);
 
     if (mem == NULL) {
-      mem = new MemTable(internal_comparator_);
+      mem = new MemTable(internal_comparator_, options_.delete_policy);
       mem->Ref();
     }
     status = WriteBatchInternal::InsertInto(&batch, mem);
@@ -909,6 +910,10 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       has_current_user_key = false;
       last_sequence_for_key = kMaxSequenceNumber;
     } else {
+      if (DeletePolicyShouldDelete(options_.delete_policy, &ikey)) {
+        ikey.type = kTypeDeletion;
+      }
+
       if (!has_current_user_key ||
           user_comparator()->Compare(ikey.user_key,
                                      Slice(current_user_key)) != 0) {
@@ -1121,7 +1126,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& options) {
   uint32_t seed;
   Iterator* iter = NewInternalIterator(options, &latest_snapshot, &seed);
   return NewDBIterator(
-      this, user_comparator(), iter,
+      this, user_comparator(), options_.delete_policy, iter,
       (options.snapshot != NULL
        ? reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_
        : latest_snapshot),
@@ -1322,7 +1327,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       log_ = new log::Writer(lfile);
       imm_ = mem_;
       has_imm_.Release_Store(imm_);
-      mem_ = new MemTable(internal_comparator_);
+      mem_ = new MemTable(internal_comparator_, options_.delete_policy);
       mem_->Ref();
       force = false;   // Do not force another compaction if have room
       MaybeScheduleCompaction();

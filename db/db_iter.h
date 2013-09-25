@@ -12,6 +12,7 @@
 namespace leveldb {
 
 class DBImpl;
+class DeletePolicy;
 
 // Return a new iterator that converts internal keys (yielded by
 // "*internal_iter") that were live at the specified "sequence" number
@@ -19,6 +20,7 @@ class DBImpl;
 extern Iterator* NewDBIterator(
     DBImpl* db,
     const Comparator* user_key_comparator,
+    const DeletePolicy* delete_policy,
     Iterator* internal_iter,
     SequenceNumber sequence,
     uint32_t seed);

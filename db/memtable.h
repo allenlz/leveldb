@@ -14,6 +14,7 @@
 namespace leveldb {
 
 class InternalKeyComparator;
+class DeletePolicy;
 class Mutex;
 class MemTableIterator;
 
@@ -21,7 +22,8 @@ class MemTable {
  public:
   // MemTables are reference counted.  The initial reference count
   // is zero and the caller must call Ref() at least once.
-  explicit MemTable(const InternalKeyComparator& comparator);
+  MemTable(const InternalKeyComparator& comparator,
+    const DeletePolicy* delete_policy);
 
   // Increase reference count.
   void Ref() { ++refs_; }
@@ -77,6 +79,7 @@ class MemTable {
   typedef SkipList<const char*, KeyComparator> Table;
 
   KeyComparator comparator_;
+  const DeletePolicy* delete_policy_;
   int refs_;
   Arena arena_;
   Table table_;

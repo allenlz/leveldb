@@ -11,6 +11,7 @@ namespace leveldb {
 
 class Cache;
 class Comparator;
+class DeletePolicy;
 class Env;
 class FilterPolicy;
 class Logger;
@@ -39,6 +40,13 @@ struct Options {
   // here has the same name and orders keys *exactly* the same as the
   // comparator provided to previous open calls on the same DB.
   const Comparator* comparator;
+
+  // (added in allenlz/leveldb)
+  // DeletePolicy used to delete keys in customized way together 
+  // with Comparator.
+  // i.e. expire keys depending on user-defined key format.
+  // Default: NULL
+  const DeletePolicy* delete_policy;
 
   // If true, the database will be created if it is missing.
   // Default: false

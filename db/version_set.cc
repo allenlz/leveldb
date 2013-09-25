@@ -266,18 +266,22 @@ enum SaverState {
 struct Saver {
   SaverState state;
   const Comparator* ucmp;
+  const DeletePolicy* delete_policy;
   Slice user_key;
   std::string* value;
 };
 }
-static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
+static void SaveValue(void* arg, const Slice& key, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
-  ParsedInternalKey parsed_key;
-  if (!ParseInternalKey(ikey, &parsed_key)) {
+  ParsedInternalKey ikey;
+  if (!ParseInternalKey(key, &ikey)) {
     s->state = kCorrupt;
   } else {
-    if (s->ucmp->Compare(parsed_key.user_key, s->user_key) == 0) {
-      s->state = (parsed_key.type == kTypeValue) ? kFound : kDeleted;
+    if (DeletePolicyShouldDelete(s->delete_policy, &ikey)) {
+      ikey.type = kTypeDeletion;
+    }
+    if (s->ucmp->Compare(ikey.user_key, s->user_key) == 0) {
+      s->state = (ikey.type == kTypeValue) ? kFound : kDeleted;
       if (s->state == kFound) {
         s->value->assign(v.data(), v.size());
       }
@@ -408,6 +412,7 @@ Status Version::Get(const ReadOptions& options,
       Saver saver;
       saver.state = kNotFound;
       saver.ucmp = ucmp;
+      saver.delete_policy = vset_->options_->delete_policy;
       saver.user_key = user_key;
       saver.value = value;
       s = vset_->table_cache_->Get(options, f->number, f->file_size,

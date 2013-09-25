@@ -11,6 +11,7 @@
 #include "leveldb/filter_policy.h"
 #include "leveldb/slice.h"
 #include "leveldb/table_builder.h"
+#include "leveldb/delete_policy.h"
 #include "util/coding.h"
 #include "util/logging.h"
 
@@ -223,6 +224,21 @@ class LookupKey {
 
 inline LookupKey::~LookupKey() {
   if (start_ != space_) delete[] start_;
+}
+
+inline bool DeletePolicyShouldDelete(const DeletePolicy* delete_policy,
+    const Slice& key, ValueType type) {
+  if (type == kTypeValue && 
+      delete_policy && delete_policy->ShouldDelete(key)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+inline bool DeletePolicyShouldDelete(const DeletePolicy* delete_policy,
+    const ParsedInternalKey* ikey) {
+  return DeletePolicyShouldDelete(delete_policy, ikey->user_key, ikey->type);
 }
 
 }  // namespace leveldb
