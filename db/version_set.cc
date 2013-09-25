@@ -269,6 +269,7 @@ struct Saver {
   const DeletePolicy* delete_policy;
   Slice user_key;
   std::string* value;
+  std::string* rkey;
 };
 }
 static void SaveValue(void* arg, const Slice& key, const Slice& v) {
@@ -284,6 +285,9 @@ static void SaveValue(void* arg, const Slice& key, const Slice& v) {
       s->state = (ikey.type == kTypeValue) ? kFound : kDeleted;
       if (s->state == kFound) {
         s->value->assign(v.data(), v.size());
+        if (s->rkey) {
+          s->rkey->assign(ikey.user_key.data(), ikey.user_key.size());
+        }
       }
     }
   }
@@ -341,6 +345,7 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
 Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
+                    std::string* rkey,
                     GetStats* stats) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
@@ -415,6 +420,7 @@ Status Version::Get(const ReadOptions& options,
       saver.delete_policy = vset_->options_->delete_policy;
       saver.user_key = user_key;
       saver.value = value;
+      saver.rkey = rkey;
       s = vset_->table_cache_->Get(options, f->number, f->file_size,
                                    ikey, &saver, SaveValue);
       if (!s.ok()) {

@@ -34,7 +34,8 @@ class DBImpl : public DB {
   virtual Status Write(const WriteOptions& options, WriteBatch* updates);
   virtual Status Get(const ReadOptions& options,
                      const Slice& key,
-                     std::string* value);
+                     std::string* value,
+                     std::string* rkey = NULL);
   virtual Iterator* NewIterator(const ReadOptions&);
   virtual const Snapshot* GetSnapshot();
   virtual void ReleaseSnapshot(const Snapshot* snapshot);

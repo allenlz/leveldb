@@ -1845,7 +1845,8 @@ class ModelDB: public DB {
     return DB::Delete(o, key);
   }
   virtual Status Get(const ReadOptions& options,
-                     const Slice& key, std::string* value) {
+                     const Slice& key, std::string* value,
+                     std::string* rkey = NULL) {
     assert(false);      // Not implemented
     return Status::NotFound(key);
   }

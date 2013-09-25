@@ -81,7 +81,8 @@ class DB {
   //
   // May return some other Status on an error.
   virtual Status Get(const ReadOptions& options,
-                     const Slice& key, std::string* value) = 0;
+                     const Slice& key, std::string* value,
+                     std::string* rkey = NULL) = 0;
 
   // Return a heap-allocated iterator over the contents of the database.
   // The result of NewIterator() is initially invalid (caller must
