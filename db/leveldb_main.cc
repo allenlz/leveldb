@@ -71,9 +71,9 @@ class WriteBatchItemPrinter : public WriteBatch::Handler {
   uint64_t sequence_;
 
   virtual void Put(const Slice& key, const Slice& value) {
-    printf("  put '%s' '%s'\n",
-           EscapeString(key).c_str(),
-           EscapeString(value).c_str());
+    printf("  put (%lu)'%s' (%lu)'%s'\n",
+           key.size(), EscapeString(key).c_str(),
+           value.size(), EscapeString(value).c_str());
   }
   virtual void Delete(const Slice& key) {
     printf("  del '%s'\n",
