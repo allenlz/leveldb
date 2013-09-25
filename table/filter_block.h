@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 #include "leveldb/slice.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 
 namespace leveldb {
 

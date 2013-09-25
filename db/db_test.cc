@@ -11,7 +11,7 @@
 #include "leveldb/cache.h"
 #include "leveldb/env.h"
 #include "leveldb/table.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "util/testharness.h"

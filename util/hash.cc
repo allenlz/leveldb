@@ -4,7 +4,7 @@
 
 #include <string.h>
 #include "util/coding.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 
 // The FALLTHROUGH_INTENDED macro can be used to annotate implicit fall-through
 // between switch labels. The real definition should be provided externally.

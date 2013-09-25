@@ -8,7 +8,7 @@
 
 #include "leveldb/cache.h"
 #include "port/port.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 #include "util/mutexlock.h"
 
 namespace leveldb {

@@ -6,7 +6,7 @@
 
 #include "leveldb/filter_policy.h"
 #include "util/coding.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 #include "util/logging.h"
 #include "util/testharness.h"
 #include "util/testutil.h"

@@ -6,7 +6,7 @@
 #include <set>
 #include "leveldb/env.h"
 #include "util/arena.h"
-#include "util/hash.h"
+#include "leveldb/hash.h"
 #include "util/random.h"
 #include "util/testharness.h"
 
