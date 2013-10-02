@@ -90,6 +90,9 @@ static int FLAGS_cache_size = -1;
 // Maximum number of files to keep open at the same time (use default if == 0)
 static int FLAGS_open_files = 0;
 
+// Maximum number of records in a manifest (use default if == 0)
+static int FLAGS_manifest_max_records = 0;
+
 // Bloom filter bits per key.
 // Negative means use default settings.
 static int FLAGS_bloom_bits = -1;
@@ -694,6 +697,7 @@ class Benchmark {
     options.block_cache = cache_;
     options.write_buffer_size = FLAGS_write_buffer_size;
     options.max_open_files = FLAGS_open_files;
+    options.manifest_max_records = FLAGS_manifest_max_records;
     options.filter_policy = filter_policy_;
     Status s = DB::Open(options, FLAGS_db, &db_);
     if (!s.ok()) {
@@ -926,6 +930,7 @@ class Benchmark {
 int main(int argc, char** argv) {
   FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
   FLAGS_open_files = leveldb::Options().max_open_files;
+  FLAGS_manifest_max_records = leveldb::Options().manifest_max_records;
   std::string default_db_path;
 
   for (int i = 1; i < argc; i++) {
@@ -958,6 +963,8 @@ int main(int argc, char** argv) {
       FLAGS_bloom_bits = n;
     } else if (sscanf(argv[i], "--open_files=%d%c", &n, &junk) == 1) {
       FLAGS_open_files = n;
+    } else if (sscanf(argv[i], "--manifest_max_records=%d%c", &n, &junk) == 1) {
+      FLAGS_manifest_max_records = n;
     } else if (strncmp(argv[i], "--db=", 5) == 0) {
       FLAGS_db = argv[i] + 5;
     } else {

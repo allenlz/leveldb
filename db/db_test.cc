@@ -196,6 +196,7 @@ class DBTest {
     kDefault,
     kFilter,
     kUncompressed,
+    kManfestRewrite,
     kEnd
   };
   int option_config_;
@@ -245,6 +246,8 @@ class DBTest {
       case kUncompressed:
         options.compression = kNoCompression;
         break;
+      case kManfestRewrite:
+        options.manifest_max_records = 2; // Small limit
       default:
         break;
     }
@@ -1594,6 +1597,112 @@ TEST(DBTest, NonWritableFileSystem) {
   env_->non_writable_.Release_Store(NULL);
 }
 
+TEST(DBTest, ManifestRewrite) {
+  Options options = CurrentOptions();
+  options.env = env_;
+  options.create_if_missing = true;
+  options.error_if_exists = false;
+  options.manifest_max_records = 2; // Small limit
+                                    // MANIFEST has 2 records after every reopen, 
+                                    // so 2 will trigger rewrite every time
+  DestroyAndReopen(&options);
+
+  // in DB open():
+  // #1: used for the first MANIFEST created by DBImpl::NewDB
+  // MANIFEST-1 has 1 VersionEdit
+  // Then:
+  // #2: used for VerstionSet::Recover to reopen a new MANIFEST
+  // Thie behavior is original from google's version
+  // MANIFEST-2 has 2 VersionEdits:
+  // --- offset 0; VersionEdit {
+  //   Comparator: leveldb.BytewiseComparator
+  // }
+  // --- offset 35; VersionEdit {
+  //   LogNumber: 3
+  //   PrevLogNumber: 0
+  //   NextFile: 4
+  //   LastSeq: 0
+  // }
+  // #3: used for the first log of mem table
+  // So now MANIFEST is 2
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 2);
+
+  ASSERT_OK(Put("foo", "bar"));
+  ASSERT_EQ("bar", Get("foo"));
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 2);
+
+  // Memtable compaction, will trigger MANIFEST rewrite
+  dbfull()->TEST_CompactMemTable();
+  ASSERT_EQ("bar", Get("foo"));
+
+  // in CompactMemTable():
+  // #4: used for new log
+  // #5: used for compacted sstable
+  // Adding new record in MANIFEST will trigger MANIFEST rewrite
+  // So MANIFEST will be #6
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 6);
+  // After rewrite, MANIFEST-6 has 2 VersionEdits:
+  // --- offset 0; VersionEdit {
+  //   Comparator: leveldb.BytewiseComparator
+  // }
+  // --- offset 35; VersionEdit {
+  //   LogNumber: 4
+  //   PrevLogNumber: 0
+  //   NextFile: 7
+  //   LastSeq: 1
+  //   AddFile: 2 5 118 'foo' @ 1 : 1 .. 'foo' @ 1 : 1
+  // }
+
+  Reopen(&options); // Will reopen a new MANIFEST 7
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 7);
+  ASSERT_EQ("bar", Get("foo"));
+}
+
+TEST(DBTest, ManifestRewriteFailedReuseFileNumber) {
+  Options options = CurrentOptions();
+  options.env = env_;
+  options.create_if_missing = true;
+  options.error_if_exists = false;
+  options.manifest_max_records = 2; // Small limit
+                                    // MANIFEST has 2 records after every reopen, 
+                                    // so 2 will trigger rewrite every time
+  DestroyAndReopen(&options);
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 2);
+
+  ASSERT_OK(Put("foo", "bar"));
+  ASSERT_EQ("bar", Get("foo"));
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 2);
+
+  // Memtable compaction, will trigger MANIFEST rewrite
+  dbfull()->TEST_CompactMemTable();
+  ASSERT_EQ("bar", Get("foo"));
+  const int last = config::kMaxMemCompactLevel;
+  ASSERT_EQ(NumTableFilesAtLevel(last), 1);   // foo=>bar is now in last level
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 6);
+
+  // Merging compaction (will fail)
+  env_->manifest_write_error_.Release_Store(env_); // Force write error
+  dbfull()->TEST_CompactRange(last, NULL, NULL);  // Should fail
+  ASSERT_EQ("bar", Get("foo"));
+  // #7: used for new sstable
+  // MANIFEST use #8 but fail, remain the same (#6)
+  // After failed, #8 is reused.
+  // Try to reuse #7 but failed, cause #8 is already alloceted
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 6);
+
+  // Try again (will succeed)
+  env_->manifest_write_error_.Release_Store(NULL);
+  dbfull()->TEST_CompactRange(last, NULL, NULL);
+  ASSERT_EQ("bar", Get("foo"));
+  // #8: used for new sstable
+  // MANIFEST use #9
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 9);
+
+  Reopen(&options); // Will reopen a new MANIFEST, use #10
+  ASSERT_EQ(dbfull()->TEST_ManifestFileNumber(), 10);
+  ASSERT_EQ("bar", Get("foo"));
+}
+
 TEST(DBTest, ManifestWriteError) {
   // Test for the following problem:
   // (a) Compaction produces file F
@@ -1603,36 +1712,38 @@ TEST(DBTest, ManifestWriteError) {
 
   // We iterate twice.  In the second iteration, everything is the
   // same except the log record never makes it to the MANIFEST file.
-  for (int iter = 0; iter < 2; iter++) {
-    port::AtomicPointer* error_type = (iter == 0)
-        ? &env_->manifest_sync_error_
-        : &env_->manifest_write_error_;
+  do {
+    for (int iter = 0; iter < 2; iter++) {
+      port::AtomicPointer* error_type = (iter == 0)
+          ? &env_->manifest_sync_error_
+          : &env_->manifest_write_error_;
 
-    // Insert foo=>bar mapping
-    Options options = CurrentOptions();
-    options.env = env_;
-    options.create_if_missing = true;
-    options.error_if_exists = false;
-    DestroyAndReopen(&options);
-    ASSERT_OK(Put("foo", "bar"));
-    ASSERT_EQ("bar", Get("foo"));
+      // Insert foo=>bar mapping
+      Options options = CurrentOptions();
+      options.env = env_;
+      options.create_if_missing = true;
+      options.error_if_exists = false;
+      DestroyAndReopen(&options);
+      ASSERT_OK(Put("foo", "bar"));
+      ASSERT_EQ("bar", Get("foo"));
 
-    // Memtable compaction (will succeed)
-    dbfull()->TEST_CompactMemTable();
-    ASSERT_EQ("bar", Get("foo"));
-    const int last = config::kMaxMemCompactLevel;
-    ASSERT_EQ(NumTableFilesAtLevel(last), 1);   // foo=>bar is now in last level
+      // Memtable compaction (will succeed)
+      dbfull()->TEST_CompactMemTable();
+      ASSERT_EQ("bar", Get("foo"));
+      const int last = config::kMaxMemCompactLevel;
+      ASSERT_EQ(NumTableFilesAtLevel(last), 1);   // foo=>bar is now in last level
 
-    // Merging compaction (will fail)
-    error_type->Release_Store(env_);
-    dbfull()->TEST_CompactRange(last, NULL, NULL);  // Should fail
-    ASSERT_EQ("bar", Get("foo"));
+      // Merging compaction (will fail)
+      error_type->Release_Store(env_);
+      dbfull()->TEST_CompactRange(last, NULL, NULL);  // Should fail
+      ASSERT_EQ("bar", Get("foo"));
 
-    // Recovery: should not lose data
-    error_type->Release_Store(NULL);
-    Reopen(&options);
-    ASSERT_EQ("bar", Get("foo"));
-  }
+      // Recovery: should not lose data
+      error_type->Release_Store(NULL);
+      Reopen(&options);
+      ASSERT_EQ("bar", Get("foo"));
+    }
+  } while (ChangeOptions());
 }
 
 TEST(DBTest, MissingSSTFile) {
