@@ -19,6 +19,7 @@ Options::Options()
       info_log(NULL),
       write_buffer_size(4<<20),
       max_open_files(1000),
+      manifest_max_records(0),
       block_cache(NULL),
       block_size(4096),
       block_restart_interval(16),

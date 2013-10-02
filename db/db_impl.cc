@@ -95,9 +95,10 @@ Options SanitizeOptions(const std::string& dbname,
   result.comparator = icmp;
   result.delete_policy = src.delete_policy;
   result.filter_policy = (src.filter_policy != NULL) ? ipolicy : NULL;
-  ClipToRange(&result.max_open_files,    64 + kNumNonTableCacheFiles, 50000);
-  ClipToRange(&result.write_buffer_size, 64<<10,                      1<<30);
-  ClipToRange(&result.block_size,        1<<10,                       4<<20);
+  ClipToRange(&result.max_open_files,       64 + kNumNonTableCacheFiles, 50000);
+  ClipToRange(&result.manifest_max_records, 0,                           1<<20);
+  ClipToRange(&result.write_buffer_size,    64<<10,                      1<<30);
+  ClipToRange(&result.block_size,           1<<10,                       4<<20);
   if (result.info_log == NULL) {
     // Open a log file in the same directory as the db
     src.env->CreateDir(dbname);  // In case it does not exist
@@ -1072,6 +1073,11 @@ Iterator* DBImpl::TEST_NewInternalIterator() {
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   MutexLock l(&mutex_);
   return versions_->MaxNextLevelOverlappingBytes();
+}
+
+uint64_t DBImpl::TEST_ManifestFileNumber() {
+  MutexLock l(&mutex_);
+  return versions_->ManifestFileNumber();
 }
 
 Status DBImpl::Get(const ReadOptions& options,

@@ -799,6 +799,7 @@ VersionSet::VersionSet(const std::string& dbname,
       icmp_(*cmp),
       next_file_number_(2),
       manifest_file_number_(0),  // Filled by Recover()
+      manifest_record_count_(0),
       last_sequence_(0),
       log_number_(0),
       prev_log_number_(0),
@@ -833,6 +834,7 @@ void VersionSet::AppendVersion(Version* v) {
   v->next_->prev_ = v;
 }
 
+// make sure only background compaction thread can call LogAndApply
 Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= log_number_);
@@ -859,18 +861,37 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   // Initialize new descriptor log file if necessary by creating
   // a temporary file that contains a snapshot of the current version.
   std::string new_manifest_file;
+  bool rewrite = false;
+  WritableFile* descriptor_file = NULL;
+  log::Writer* descriptor_log = NULL;
+  uint64_t manifest_file_number = 0;
   Status s;
-  if (descriptor_log_ == NULL) {
-    // No reason to unlock *mu here since we only hit this path in the
-    // first call to LogAndApply (when opening the database).
-    assert(descriptor_file_ == NULL);
-    new_manifest_file = DescriptorFileName(dbname_, manifest_file_number_);
+  if (descriptor_log_ == NULL 
+      || (options_->manifest_max_records > 0 
+          && manifest_record_count_ >= options_->manifest_max_records)) {
+    // MANIFEST is empty or should rewrite
+    rewrite = (descriptor_log_ == NULL ? false : true);
+    manifest_file_number = (!rewrite ? manifest_file_number_ : NewFileNumber());
+    Log(options_->info_log, "new MANIFEST: %llu\n", manifest_file_number);
+    new_manifest_file = DescriptorFileName(dbname_, manifest_file_number);
     edit->SetNextFile(next_file_number_);
-    s = env_->NewWritableFile(new_manifest_file, &descriptor_file_);
-    if (s.ok()) {
-      descriptor_log_ = new log::Writer(descriptor_file_);
-      s = WriteSnapshot(descriptor_log_);
+
+    // Unlock during expensive MANIFEST log operation
+    {
+      mu->Unlock();
+      s = env_->NewWritableFile(new_manifest_file, &descriptor_file);
+      Log(options_->info_log, "MANIFEST open: %s\n", s.ToString().c_str());
+      if (s.ok()) {
+        descriptor_log = new log::Writer(descriptor_file);
+        s = WriteSnapshot(descriptor_log);
+        Log(options_->info_log, "MANIFEST snapshot: %s\n", s.ToString().c_str());
+      }
+      mu->Lock();
     }
+  } else {
+    descriptor_file = descriptor_file_;
+    descriptor_log = descriptor_log_;
+    manifest_file_number = manifest_file_number_;
   }
 
   // Unlock during expensive MANIFEST log write
@@ -881,9 +902,9 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     if (s.ok()) {
       std::string record;
       edit->EncodeTo(&record);
-      s = descriptor_log_->AddRecord(record);
+      s = descriptor_log->AddRecord(record);
       if (s.ok()) {
-        s = descriptor_file_->Sync();
+        s = descriptor_file->Sync();
       }
       if (!s.ok()) {
         Log(options_->info_log, "MANIFEST write: %s\n", s.ToString().c_str());
@@ -897,9 +918,10 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
 
     // If we just created a new descriptor file, install it by writing a
-    // new CURRENT file that points to it.
+    // new CURRENT file that points to it. 
+    // It's also expensive operation
     if (s.ok() && !new_manifest_file.empty()) {
-      s = SetCurrentFile(env_, dbname_, manifest_file_number_);
+      s = SetCurrentFile(env_, dbname_, manifest_file_number);
       // No need to double-check MANIFEST in case of error since it
       // will be discarded below.
     }
@@ -912,14 +934,27 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     AppendVersion(v);
     log_number_ = edit->log_number_;
     prev_log_number_ = edit->prev_log_number_;
+    if (!new_manifest_file.empty()) {
+      // Switch to new MANIFEST, the old one will be deleted 
+      // by DeleteObsoleteFiles()
+      delete descriptor_log_;
+      delete descriptor_file_;
+      descriptor_file_ = descriptor_file;
+      descriptor_log_ = descriptor_log;
+      manifest_file_number_ = manifest_file_number;
+      manifest_record_count_ = 1; // 1 for the snapshot
+    }
+    manifest_record_count_++;
   } else {
     delete v;
     if (!new_manifest_file.empty()) {
-      delete descriptor_log_;
-      delete descriptor_file_;
-      descriptor_log_ = NULL;
-      descriptor_file_ = NULL;
+      delete descriptor_log;
+      delete descriptor_file;
       env_->DeleteFile(new_manifest_file);
+      if (rewrite) {
+        // Since new MANIFEST error, try to reuse the the file number
+        ReuseFileNumber(manifest_file_number);
+      }
     }
   }
 
@@ -1135,7 +1170,7 @@ const char* VersionSet::LevelSummary(LevelSummaryStorage* scratch) const {
   return scratch->buffer;
 }
 
-// Return true iff the manifest contains the specified record.
+// Return true if the manifest contains the specified record.
 bool VersionSet::ManifestContains(const std::string& record) const {
   std::string fname = DescriptorFileName(dbname_, manifest_file_number_);
   Log(options_->info_log, "ManifestContains: checking %s\n", fname.c_str());

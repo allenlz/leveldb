@@ -97,6 +97,21 @@ struct Options {
   // Default: 1000
   int max_open_files;
 
+  // (added in allenlz/leveldb)
+  // Maximum number of records in one MANIFEST. If it reaches the limit,
+  // MANIFEST will be rewrite to a new file.
+  //
+  // In google/leveldb, MANIFEST grows without bound or rewrite. Every change
+  // of files or compaction will append one record in MANIFEST, and a large
+  // MANIFEST will take very very long time in next open and recover.
+  // However, MANIFEST rewrite is really expensive if there are more than 
+  // ten thousands of sstables.
+  // You may need to adjust this parameter to balance between reopen time
+  // and performance.
+  //
+  // Default: 0 (no limit)
+  int manifest_max_records;
+
   // Control over blocks (user data is stored in a set of blocks, and
   // a block is the unit of reading from disk).
 
