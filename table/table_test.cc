@@ -318,7 +318,7 @@ class MemTableConstructor: public Constructor {
   explicit MemTableConstructor(const Comparator* cmp)
       : Constructor(cmp),
         internal_comparator_(cmp) {
-    memtable_ = new MemTable(internal_comparator_);
+    memtable_ = new MemTable(internal_comparator_, NULL);
     memtable_->Ref();
   }
   ~MemTableConstructor() {
@@ -326,7 +326,7 @@ class MemTableConstructor: public Constructor {
   }
   virtual Status FinishImpl(const Options& options, const KVMap& data) {
     memtable_->Unref();
-    memtable_ = new MemTable(internal_comparator_);
+    memtable_ = new MemTable(internal_comparator_, NULL);
     memtable_->Ref();
     int seq = 1;
     for (KVMap::const_iterator it = data.begin();
@@ -761,7 +761,7 @@ class MemTableTest { };
 
 TEST(MemTableTest, Simple) {
   InternalKeyComparator cmp(BytewiseComparator());
-  MemTable* memtable = new MemTable(cmp);
+  MemTable* memtable = new MemTable(cmp, NULL);
   memtable->Ref();
   WriteBatch batch;
   WriteBatchInternal::SetSequence(&batch, 100);
