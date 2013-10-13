@@ -1365,6 +1365,78 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
       *value = buf;
       return true;
     }
+  } else if (in.starts_with("file-size-at-level")) {
+    in.remove_prefix(strlen("file-size-at-level"));
+    uint64_t level;
+    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+    if (!ok || level >= config::kNumLevels) {
+      return false;
+    } else {
+      char buf[100];
+      snprintf(buf, sizeof(buf), "%ld",
+               versions_->NumLevelBytes(static_cast<int>(level)));
+      *value = buf;
+      return true;
+    }
+  } else if (in.starts_with("seconds-at-level")) {
+    in.remove_prefix(strlen("seconds-at-level"));
+    uint64_t level;
+    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+    if (!ok || level >= config::kNumLevels) {
+      return false;
+    } else {
+      char buf[100];
+      snprintf(buf, sizeof(buf), "%ld", stats_[level].micros / 1000000);
+      *value = buf;
+      return true;
+    }
+  } else if (in.starts_with("bytes-read-at-level")) {
+    in.remove_prefix(strlen("bytes-read-at-level"));
+    uint64_t level;
+    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+    if (!ok || level >= config::kNumLevels) {
+      return false;
+    } else {
+      char buf[100];
+      snprintf(buf, sizeof(buf), "%ld", stats_[level].bytes_read);
+      *value = buf;
+      return true;
+    }
+  } else if (in.starts_with("bytes-written-at-level")) {
+    in.remove_prefix(strlen("bytes-written-at-level"));
+    uint64_t level;
+    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+    if (!ok || level >= config::kNumLevels) {
+      return false;
+    } else {
+      char buf[100];
+      snprintf(buf, sizeof(buf), "%ld", stats_[level].bytes_written);
+      *value = buf;
+      return true;
+    }
+  } else if (in == "total-num-files") {
+    int64_t total = 0;
+    for (int level = 0; level < config::kNumLevels; level++) {
+      total += versions_->NumLevelFiles(level);
+    }
+    char buf[100];
+    snprintf(buf, sizeof(buf), "%ld", total);
+    *value = buf;
+    return true;
+  } else if (in == "total-file-size") {
+    int64_t total = 0;
+    for (int level = 0; level < config::kNumLevels; level++) {
+      total += versions_->NumLevelBytes(level);
+    }
+    char buf[100];
+    snprintf(buf, sizeof(buf), "%ld", total);
+    *value = buf;
+    return true;
+  } else if (in == "compacting") {
+    char buf[100];
+    snprintf(buf, sizeof(buf), "%d", bg_compaction_scheduled_);
+    *value = buf;
+    return true;
   } else if (in == "stats") {
     char buf[200];
     snprintf(buf, sizeof(buf),
