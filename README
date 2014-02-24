@@ -1,3 +1,17 @@
+
+A fork of google's leveldb with several additional features
+
+* Add delete_policy to support data expiration.
+  Application can use it to judge whether a key should be deleted or not.
+  This policy is hooked into the leveldb processing for key, i.e. get, 
+  compaction, iterator.
+* Support MANIFEST rewrite and add option manifest_max_records
+  MANIFEST file will be grow without bound. This will take a very very long 
+  time to reopen it. I add a rewrite mechanism after it reaches 
+  manifest_max_records.
+
+--------------------------------------------------------------------------------
+
 leveldb: A key-value store
 Authors: Sanjay Ghemawat (sanjay@google.com) and Jeff Dean (jeff@google.com)
 
