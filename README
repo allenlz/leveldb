@@ -1,4 +1,3 @@
-
 A fork of google's leveldb with several additional features
 
 * Add delete_policy to support data expiration.
@@ -9,6 +8,8 @@ A fork of google's leveldb with several additional features
   MANIFEST file will be grow without bound. This will take a very very long 
   time to reopen it. I add a rewrite mechanism after it reaches 
   manifest_max_records.
+
+You can find some examples in https://github.com/allenlz/leveldb-demo.
 
 --------------------------------------------------------------------------------
 
